@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PDF Filename Checker",
-  description: "Verify PDF filenames match fields inside the documents",
+  title: "Box K1 filename check",
+  description: "Compare Box PDF filenames to K1 Partner Name and Investment Number metadata",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

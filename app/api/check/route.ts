@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
+import { normalize } from "@/lib/normalize";
+import type { FileResult } from "@/types/results";
 
-export interface FileResult {
-  filename: string;
-  extractedValue: string | null;
-  match: boolean | null;
-  error?: string;
-}
-
-function normalize(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_\-]+/g, " ");
-}
+export type { FileResult };
 
 function extractTextField(text: string, fieldName: string): string | null {
   // Match patterns like "Field Name: value" or "Field Name value" on same line

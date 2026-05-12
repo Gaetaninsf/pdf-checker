@@ -1,196 +1,191 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import type { FileResult } from "./api/check/route";
+import { useState, useMemo } from "react";
+import type { BoxCheckRow } from "@/types/results";
 
-const METADATA_FIELDS = ["Title", "Author", "Subject", "Keywords", "Creator", "Producer"];
+/** Sort: errors / missing metadata first, then mismatches, then matches; tie-break by filename. */
+function boxCheckSortPriority(r: BoxCheckRow): number {
+  if (r.match === null) return 0;
+  if (r.match === false) return 1;
+  return 2;
+}
+
+function sortBoxCheckRows(rows: BoxCheckRow[]): BoxCheckRow[] {
+  return [...rows].sort((a, b) => {
+    const pa = boxCheckSortPriority(a);
+    const pb = boxCheckSortPriority(b);
+    if (pa !== pb) return pa - pb;
+    const pathCmp = a.subfolderPath.localeCompare(b.subfolderPath, undefined, { sensitivity: "base" });
+    if (pathCmp !== 0) return pathCmp;
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  });
+}
 
 export default function Home() {
-  const [files, setFiles] = useState<File[]>([]);
-  const [mode, setMode] = useState<"text" | "metadata">("text");
-  const [field, setField] = useState("");
-  const [results, setResults] = useState<FileResult[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [boxFolderId, setBoxFolderId] = useState("");
+  const [boxResults, setBoxResults] = useState<BoxCheckRow[] | null>(null);
+  const [boxError, setBoxError] = useState<string | null>(null);
+  const [boxLoading, setBoxLoading] = useState(false);
 
-  const addFiles = (newFiles: File[]) => {
-    const pdfs = newFiles.filter((f) => f.type === "application/pdf" || f.name.endsWith(".pdf"));
-    setFiles((prev) => {
-      const names = new Set(prev.map((f) => f.name));
-      return [...prev, ...pdfs.filter((f) => !names.has(f.name))];
-    });
-    setResults(null);
-  };
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    addFiles(Array.from(e.dataTransfer.files));
-  }, []);
-
-  const onCheck = async () => {
-    if (!files.length || !field.trim()) return;
-    setLoading(true);
-    setResults(null);
-    const formData = new FormData();
-    formData.append("mode", mode);
-    formData.append("field", field.trim());
-    files.forEach((f) => formData.append("files", f));
+  const onBoxCheck = async () => {
+    setBoxLoading(true);
+    setBoxError(null);
+    setBoxResults(null);
     try {
-      const res = await fetch("/api/check", { method: "POST", body: formData });
+      const res = await fetch("/api/box-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(boxFolderId.trim() ? { folderId: boxFolderId.trim() } : {}),
+        }),
+      });
       const data = await res.json();
-      setResults(data.results);
+      if (data.results) setBoxResults(data.results as BoxCheckRow[]);
+      if (!res.ok) {
+        setBoxError(typeof data.error === "string" ? data.error : "Box check failed");
+        return;
+      }
     } finally {
-      setLoading(false);
+      setBoxLoading(false);
     }
   };
 
-  const matchCount = results?.filter((r) => r.match === true).length ?? 0;
-  const mismatchCount = results?.filter((r) => r.match === false).length ?? 0;
-  const errorCount = results?.filter((r) => r.match === null).length ?? 0;
+  const boxMatch = boxResults?.filter((r) => r.match === true).length ?? 0;
+  const boxMismatch = boxResults?.filter((r) => r.match === false).length ?? 0;
+  const boxIssues = boxResults?.filter((r) => r.match === null).length ?? 0;
+
+  const sortedBoxResults = useMemo(
+    () => (boxResults?.length ? sortBoxCheckRows(boxResults) : []),
+    [boxResults]
+  );
 
   return (
-    <main className="max-w-3xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold text-gray-900 mb-2">PDF Filename Checker</h1>
-      <p className="text-gray-500 mb-8">Verify that filenames match a field inside your PDF documents.</p>
+    <main className="max-w-5xl mx-auto px-4 py-12">
+      <h1 className="text-3xl font-bold text-gray-900 mb-2">Box folder check</h1>
+      <p className="text-gray-500 text-sm mb-8">
+        Recursively lists PDFs in a Box folder and all subfolders, then compares each filename to the{" "}
+        <span className="font-medium text-gray-700">K1 Partner Name and Investment Number</span> template:{" "}
+        <span className="font-medium text-gray-700">Investment Number</span> must appear in the filename. For{" "}
+        <span className="font-medium text-gray-700">Partner Name</span>, the full name or its{" "}
+        <span className="font-medium text-gray-700">last word</span> (e.g. last name) must appear. Matching ignores case and treats
+        spaces, dashes, and underscores like spaces. Use the <span className="font-medium text-gray-700">Open</span> link to jump to
+        the file in the Box web app (new tab).
+      </p>
 
-      {/* Drop Zone */}
-      <div
-        className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-colors mb-6 ${
-          dragging ? "border-blue-500 bg-blue-50" : "border-gray-300 hover:border-blue-400 hover:bg-gray-50"
-        }`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => inputRef.current?.click()}
-      >
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-4">
+        <label className="block text-sm text-gray-600 mb-1">Box folder ID (optional if BOX_FOLDER_ID is set)</label>
         <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept=".pdf,application/pdf"
-          className="hidden"
-          onChange={(e) => addFiles(Array.from(e.target.files ?? []))}
+          type="text"
+          placeholder="e.g. 123456789012"
+          value={boxFolderId}
+          onChange={(e) => {
+            setBoxFolderId(e.target.value);
+            setBoxResults(null);
+            setBoxError(null);
+          }}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <div className="text-4xl mb-3">📄</div>
-        <p className="text-gray-600 font-medium">Drop PDF files here or click to browse</p>
-        <p className="text-gray-400 text-sm mt-1">Multiple files supported</p>
+        <p className="text-xs text-gray-400 mt-2">
+          Server needs <span className="font-mono">BOX_ACCESS_TOKEN</span> or{" "}
+          <span className="font-mono">BOX_DEVELOPER_TOKEN</span> in <span className="font-mono">.env.local</span>.
+        </p>
       </div>
 
-      {/* File List */}
-      {files.length > 0 && (
-        <div className="mb-6 bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-          <div className="px-4 py-3 flex justify-between items-center">
-            <span className="text-sm font-medium text-gray-700">{files.length} file{files.length > 1 ? "s" : ""} selected</span>
-            <button onClick={() => { setFiles([]); setResults(null); }} className="text-sm text-red-500 hover:text-red-700">Clear all</button>
-          </div>
-          {files.map((f) => (
-            <div key={f.name} className="px-4 py-2 flex justify-between items-center text-sm text-gray-600">
-              <span className="truncate mr-4">{f.name}</span>
-              <button onClick={() => setFiles((prev) => prev.filter((x) => x.name !== f.name))} className="text-gray-400 hover:text-red-500 flex-shrink-0">✕</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Config */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-        <p className="text-sm font-medium text-gray-700 mb-3">Extraction mode</p>
-        <div className="flex gap-3 mb-4">
-          <button
-            onClick={() => { setMode("text"); setField(""); }}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${
-              mode === "text" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
-            }`}
-          >
-            Text Field
-          </button>
-          <button
-            onClick={() => { setMode("metadata"); setField("Title"); }}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium border transition-colors ${
-              mode === "metadata" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-600 border-gray-300 hover:border-blue-400"
-            }`}
-          >
-            PDF Metadata
-          </button>
-        </div>
-
-        {mode === "text" ? (
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Field label to search for in document text</label>
-            <input
-              type="text"
-              placeholder='e.g. "Invoice No" or "Contract ID"'
-              value={field}
-              onChange={(e) => setField(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-400 mt-1">Looks for patterns like <span className="font-mono">Invoice No: ABC-123</span></p>
-          </div>
-        ) : (
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Metadata field</label>
-            <select
-              value={field}
-              onChange={(e) => setField(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {METADATA_FIELDS.map((f) => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Check Button */}
       <button
-        onClick={onCheck}
-        disabled={!files.length || !field.trim() || loading}
-        className="w-full py-3 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mb-8"
+        type="button"
+        onClick={onBoxCheck}
+        disabled={boxLoading}
+        className="w-full py-3 bg-slate-800 text-white rounded-xl font-medium hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mb-6"
       >
-        {loading ? "Checking…" : "Check Files"}
+        {boxLoading ? "Checking Box folder…" : "Check Box folder"}
       </button>
 
-      {/* Results */}
-      {results && (
+      {boxError && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{boxError}</div>
+      )}
+
+      {boxResults && boxResults.length > 0 && (
         <div>
           <div className="flex gap-4 mb-4">
             <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">{matchCount}</div>
-              <div className="text-sm text-green-700">Match</div>
+              <div className="text-2xl font-bold text-green-600">{boxMatch}</div>
+              <div className="text-sm text-green-700">Both match</div>
             </div>
             <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{mismatchCount}</div>
+              <div className="text-2xl font-bold text-red-600">{boxMismatch}</div>
               <div className="text-sm text-red-700">Mismatch</div>
             </div>
             <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-600">{errorCount}</div>
-              <div className="text-sm text-yellow-700">Not Found</div>
+              <div className="text-2xl font-bold text-yellow-600">{boxIssues}</div>
+              <div className="text-sm text-yellow-700">Missing / error</div>
             </div>
           </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+            <table className="w-full text-sm table-fixed">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Filename</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Extracted Value</th>
-                  <th className="text-left px-4 py-3 text-gray-600 font-medium">Status</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium w-[32%]">Filename</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium w-[18%]">Subfolder</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium">Partner Name</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium">Investment #</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium">In filename</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium">Status</th>
+                  <th className="text-left px-3 py-3 text-gray-600 font-medium w-[72px]">Box</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {results.map((r) => (
-                  <tr key={r.filename} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-mono text-gray-700 truncate max-w-[180px]">{r.filename}</td>
-                    <td className="px-4 py-3 text-gray-500 truncate max-w-[180px]">
-                      {r.extractedValue ?? <span className="text-gray-300 italic">—</span>}
+                {sortedBoxResults.map((r) => (
+                  <tr key={r.fileId} className="hover:bg-gray-50">
+                    <td className="px-3 py-3 font-mono text-sm text-gray-700 break-all whitespace-normal align-top">
+                      {r.name}
                     </td>
-                    <td className="px-4 py-3">
-                      {r.match === true && <span className="inline-flex items-center gap-1 text-green-700 bg-green-50 px-2 py-1 rounded-full text-xs font-medium">✓ Match</span>}
-                      {r.match === false && <span className="inline-flex items-center gap-1 text-red-700 bg-red-50 px-2 py-1 rounded-full text-xs font-medium">✕ Mismatch</span>}
-                      {r.match === null && <span className="inline-flex items-center gap-1 text-yellow-700 bg-yellow-50 px-2 py-1 rounded-full text-xs font-medium" title={r.error}>⚠ Not Found</span>}
+                    <td className="px-3 py-3 text-xs text-gray-500 break-words align-top" title={r.subfolderPath || "(root folder)"}>
+                      {r.subfolderPath ? r.subfolderPath : "—"}
+                    </td>
+                    <td className="px-3 py-3 text-gray-600 break-words align-top" title={r.partnerName ?? ""}>
+                      {r.partnerName ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 text-gray-600 break-words align-top" title={r.investmentNumber ?? ""}>
+                      {r.investmentNumber ?? "—"}
+                    </td>
+                    <td className="px-3 py-3 text-gray-500 text-xs whitespace-nowrap align-top">
+                      {r.matchPartner === true && <span className="text-green-700">Partner ✓</span>}
+                      {r.matchPartner === false && <span className="text-red-700">Partner ✕</span>}
+                      {r.matchPartner == null && <span className="text-gray-400">—</span>}
+                      <span className="mx-1 text-gray-300">·</span>
+                      {r.matchInvestment === true && <span className="text-green-700">Inv ✓</span>}
+                      {r.matchInvestment === false && <span className="text-red-700">Inv ✕</span>}
+                      {r.matchInvestment == null && <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-3 py-3 align-top">
+                      {r.match === true && (
+                        <span className="inline-flex text-green-700 bg-green-50 px-2 py-1 rounded-full text-xs font-medium">
+                          ✓ Match
+                        </span>
+                      )}
+                      {r.match === false && (
+                        <span className="inline-flex text-red-700 bg-red-50 px-2 py-1 rounded-full text-xs font-medium">
+                          ✕ Mismatch
+                        </span>
+                      )}
+                      {r.match === null && (
+                        <span
+                          className="inline-flex text-yellow-800 bg-yellow-50 px-2 py-1 rounded-full text-xs font-medium"
+                          title={r.error}
+                        >
+                          ⚠ {r.error ? "Error" : "—"}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 align-top whitespace-nowrap">
+                      <a
+                        href={r.boxFileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        Open
+                      </a>
                     </td>
                   </tr>
                 ))}
@@ -198,6 +193,10 @@ export default function Home() {
             </table>
           </div>
         </div>
+      )}
+
+      {boxResults && boxResults.length === 0 && !boxError && (
+        <p className="text-sm text-gray-500">No PDF files in this folder.</p>
       )}
     </main>
   );

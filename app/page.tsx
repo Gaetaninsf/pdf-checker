@@ -86,8 +86,11 @@ export default function Home() {
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <p className="text-xs text-gray-400 mt-2">
-          Server needs <span className="font-mono">BOX_ACCESS_TOKEN</span> or{" "}
-          <span className="font-mono">BOX_DEVELOPER_TOKEN</span> in <span className="font-mono">.env.local</span>.
+          Server auth (never in the browser): production uses{" "}
+          <span className="font-mono">BOX_CLIENT_ID</span>, <span className="font-mono">BOX_CLIENT_SECRET</span>,{" "}
+          <span className="font-mono">BOX_ENTERPRISE_ID</span> (CCG). For local testing you can use{" "}
+          <span className="font-mono">BOX_ACCESS_TOKEN</span> or <span className="font-mono">BOX_DEVELOPER_TOKEN</span>{" "}
+          in <span className="font-mono">.env.local</span> instead.
         </p>
       </div>
 

@@ -1,16 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveBoxAccessToken } from "@/lib/box-server-token";
 import { runBoxFolderK1Check, K1_TEMPLATE_DISPLAY_NAME } from "@/lib/box-folder-check";
 import type { BoxCheckRow } from "@/types/results";
 
 export type { BoxCheckRow };
 
 export async function POST(req: NextRequest) {
-  const token = process.env.BOX_ACCESS_TOKEN ?? process.env.BOX_DEVELOPER_TOKEN;
-  if (!token?.trim()) {
+  let token: string;
+  try {
+    token = await resolveBoxAccessToken();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json(
       {
-        error:
-          "Missing BOX_ACCESS_TOKEN or BOX_DEVELOPER_TOKEN. Set one in .env.local (server only).",
+        error: `${msg} Set secrets only on the server (e.g. .env.local or your host’s env).`,
       },
       { status: 500 }
     );
@@ -48,7 +51,7 @@ export async function POST(req: NextRequest) {
     partnerFieldKey,
     investmentFieldKey,
     setupError,
-  } = await runBoxFolderK1Check(token.trim(), folderId);
+  } = await runBoxFolderK1Check(token, folderId);
 
   if (setupError) {
     return NextResponse.json(

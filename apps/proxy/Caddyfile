@@ -1,0 +1,24 @@
+{
+    auto_https off
+    admin off
+}
+
+:{$PORT:8080} {
+    log {
+        format console
+        level INFO
+    }
+
+    @api path /api/*
+    handle @api {
+        reverse_proxy {$API_UPSTREAM} {
+            header_up Host {upstream_hostport}
+        }
+    }
+
+    handle {
+        reverse_proxy {$WEB_UPSTREAM} {
+            header_up Host {upstream_hostport}
+        }
+    }
+}

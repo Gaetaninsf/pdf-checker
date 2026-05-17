@@ -1,0 +1,16 @@
+# Identity-Aware Proxy (IAP) access allowlist.
+#
+# One email per line. Blank lines and lines starting with `#` are ignored.
+# Leading/trailing whitespace is trimmed.
+#
+# This file is the SINGLE SOURCE OF TRUTH for who can sign in to the
+# deployed application. scripts/gcp_bootstrap.sh syncs it to IAP IAM
+# bindings on the Caddy Cloud Run service. Removing an email here and
+# re-running the bootstrap REVOKES that user's access.
+
+gaetan@a16z.com
+marvin@a16z.com
+keller@a16z.com
+tgjerde@a16z.com
+czhang@a16z.com
+wcheng@a16z.com

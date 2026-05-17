@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install API deps
+        run: cd apps/api && npm ci
+      - name: Install web deps
+        run: cd apps/web && npm ci
+      - name: Test
+        run: make test
+      - name: Typecheck
+        run: make typecheck
+      - name: Security
+        run: make security

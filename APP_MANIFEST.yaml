@@ -1,0 +1,18 @@
+app:
+  name: "PDF Checker"
+  slug: "pdf-checker"
+  owner_team: "gaetan"
+  primary_owner_email: "gaetan@a16z.com"
+
+severity:
+  level: "L1"
+  audience: "internal"
+  data_notes: "Reads Box folder metadata to verify K1 PDF filenames. No user data stored."
+
+gcp:
+  region: "us-central1"
+  artifact_registry_repo: "apps"
+  cloud_run_service: "pdf-checker"
+  gcs_bucket: "AUTO"
+  deployer_iam_role: "roles/owner"
+  aether_project_url: "https://aether.a16z.com/projects/tar-012f42959395"

@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "box-node-sdk": "^10.9.0",
+    "box-node-sdk": "^10.18.0",
     "express": "^4.21.0"
   },
   "devDependencies": {
@@ -20,6 +20,9 @@
     "eslint": "^9",
     "tsx": "^4",
     "typescript": "^5",
-    "vitest": "^3"
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "basic-ftp": "^6.2.3"
   }
 }

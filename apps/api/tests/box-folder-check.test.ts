@@ -1,5 +1,38 @@
 import { describe, it, expect } from "vitest";
-import { filenameMatchesBothFields } from "../src/lib/box-folder-check";
+import {
+  filenameMatchesBothFields,
+  resolveK1Templates,
+  k1TemplateDisplayNames,
+} from "../src/lib/box-folder-check";
+
+describe("resolveK1Templates", () => {
+  const templates = [
+    {
+      scope: "enterprise_1",
+      templateKey: "filename",
+      displayName: "K1 Partner Name and Investment Number",
+      fields: [
+        { key: "filename", displayName: "Partner Name" },
+        { key: "investmentNumber", displayName: "Investment Number" },
+      ],
+    },
+    {
+      scope: "enterprise_1",
+      templateKey: "nameMatchingForK1",
+      displayName: "Name matching for K1 - Production",
+      fields: [
+        { key: "partnerName", displayName: "Partner Name" },
+        { key: "filename", displayName: "Investor number" },
+      ],
+    },
+  ];
+
+  it("prefers the production template over the legacy template", () => {
+    const resolved = resolveK1Templates(templates);
+    expect(resolved.map((t) => t.templateKey)).toEqual(["nameMatchingForK1", "filename"]);
+    expect(k1TemplateDisplayNames()[0]).toBe("Name matching for K1 - Production");
+  });
+});
 
 describe("filenameMatchesBothFields", () => {
   it("matches when both partner full name and investment number appear in stem", () => {

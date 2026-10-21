@@ -7,9 +7,21 @@ export function boxWebFileUrl(fileId: string): string {
   return `https://app.box.com/file/${fileId}`;
 }
 
+/** Legacy template; kept for fallback. Production files often use the first name below. */
 export const K1_TEMPLATE_DISPLAY_NAME = "K1 Partner Name and Investment Number";
+export const K1_TEMPLATE_DISPLAY_NAME_PRODUCTION = "Name matching for K1 - Production";
 export const K1_FIELD_PARTNER_DISPLAY = "Partner Name";
 export const K1_FIELD_INVESTMENT_DISPLAY = "Investment Number";
+export const K1_FIELD_INVESTMENT_DISPLAY_ALT = "Investor number";
+
+export function k1TemplateDisplayNames(): string[] {
+  const fromEnv = process.env.BOX_METADATA_TEMPLATE_NAME?.trim();
+  const defaults = [K1_TEMPLATE_DISPLAY_NAME_PRODUCTION, K1_TEMPLATE_DISPLAY_NAME];
+  if (fromEnv) {
+    return [fromEnv, ...defaults.filter((n) => n !== fromEnv)];
+  }
+  return defaults;
+}
 
 export type { BoxCheckRow };
 
@@ -54,16 +66,43 @@ function asTemplateArray(data: unknown): BoxMetadataTemplate[] {
   return [];
 }
 
+export function resolveK1Templates(templates: BoxMetadataTemplate[]): BoxMetadataTemplate[] {
+  const wantNames = k1TemplateDisplayNames().map((n) => n.trim().toLowerCase());
+  const resolved: BoxMetadataTemplate[] = [];
+  for (const want of wantNames) {
+    const t = templates.find((x) => (x.displayName ?? "").trim().toLowerCase() === want);
+    if (t) resolved.push(t);
+  }
+  return resolved;
+}
+
+/** @deprecated Prefer resolveK1Templates — returns first matching template. */
 export function resolveK1Template(templates: BoxMetadataTemplate[]): BoxMetadataTemplate | null {
-  const want = K1_TEMPLATE_DISPLAY_NAME.trim().toLowerCase();
-  return (
-    templates.find((t) => (t.displayName ?? "").trim().toLowerCase() === want) ?? null
-  );
+  return resolveK1Templates(templates)[0] ?? null;
 }
 
 function fieldKeyForDisplay(fields: BoxTemplateField[] | undefined, displayName: string): string | undefined {
   const want = displayName.trim().toLowerCase();
   return fields?.find((f) => (f.displayName ?? "").trim().toLowerCase() === want)?.key;
+}
+
+function investmentFieldKeyForTemplate(template: BoxMetadataTemplate): string | undefined {
+  for (const displayName of [K1_FIELD_INVESTMENT_DISPLAY, K1_FIELD_INVESTMENT_DISPLAY_ALT]) {
+    const key = fieldKeyForDisplay(template.fields, displayName);
+    if (key) return key;
+  }
+  return undefined;
+}
+
+function findK1InstanceForTemplates(
+  entries: Record<string, unknown>[] | undefined,
+  templates: BoxMetadataTemplate[]
+): { instance: Record<string, unknown>; template: BoxMetadataTemplate } | null {
+  for (const template of templates) {
+    const instance = findK1Instance(entries, template.scope, template.templateKey);
+    if (instance) return { instance, template };
+  }
+  return null;
 }
 
 function metadataValueString(raw: unknown): string | null {
@@ -211,28 +250,29 @@ export async function runBoxFolderK1Check(accessToken: string, folderId: string)
     };
   }
 
-  const template = resolveK1Template(templates);
-  if (!template) {
+  const k1Templates = resolveK1Templates(templates);
+  if (k1Templates.length === 0) {
     return {
       results: [],
       templateScope: "",
       templateKey: "",
       partnerFieldKey: "",
       investmentFieldKey: "",
-      setupError: `Metadata template not found: "${K1_TEMPLATE_DISPLAY_NAME}"`,
+      setupError: `Metadata template not found. Tried: ${k1TemplateDisplayNames().map((n) => `"${n}"`).join(", ")}`,
     };
   }
 
-  const partnerFieldKey = fieldKeyForDisplay(template.fields, K1_FIELD_PARTNER_DISPLAY);
-  const investmentFieldKey = fieldKeyForDisplay(template.fields, K1_FIELD_INVESTMENT_DISPLAY);
+  const primaryTemplate = k1Templates[0];
+  const partnerFieldKey = fieldKeyForDisplay(primaryTemplate.fields, K1_FIELD_PARTNER_DISPLAY);
+  const investmentFieldKey = investmentFieldKeyForTemplate(primaryTemplate);
   if (!partnerFieldKey || !investmentFieldKey) {
     return {
       results: [],
-      templateScope: template.scope,
-      templateKey: template.templateKey,
+      templateScope: primaryTemplate.scope,
+      templateKey: primaryTemplate.templateKey,
       partnerFieldKey: partnerFieldKey ?? "",
       investmentFieldKey: investmentFieldKey ?? "",
-      setupError: `Template is missing field keys for "${K1_FIELD_PARTNER_DISPLAY}" and/or "${K1_FIELD_INVESTMENT_DISPLAY}"`,
+      setupError: `Template is missing field keys for "${K1_FIELD_PARTNER_DISPLAY}" and/or "${K1_FIELD_INVESTMENT_DISPLAY}" / "${K1_FIELD_INVESTMENT_DISPLAY_ALT}"`,
     };
   }
 
@@ -242,8 +282,8 @@ export async function runBoxFolderK1Check(accessToken: string, folderId: string)
   } catch (e) {
     return {
       results: [],
-      templateScope: template.scope,
-      templateKey: template.templateKey,
+      templateScope: primaryTemplate.scope,
+      templateKey: primaryTemplate.templateKey,
       partnerFieldKey,
       investmentFieldKey,
       setupError: e instanceof Error ? e.message : String(e),
@@ -255,8 +295,8 @@ export async function runBoxFolderK1Check(accessToken: string, folderId: string)
       const stem = file.name.replace(/\.pdf$/i, "");
       try {
         const coll = await boxJson<FileMetadataCollection>(`/files/${file.id}/metadata`, accessToken);
-        const instance = findK1Instance(coll.entries, template.scope, template.templateKey);
-        if (!instance) {
+        const hit = findK1InstanceForTemplates(coll.entries, k1Templates);
+        if (!hit) {
           return {
             fileId: file.id,
             boxFileUrl: boxWebFileUrl(file.id),
@@ -272,8 +312,27 @@ export async function runBoxFolderK1Check(accessToken: string, folderId: string)
           };
         }
 
-        const partnerName = metadataValueString(instance[partnerFieldKey]);
-        const investmentNumber = metadataValueString(instance[investmentFieldKey]);
+        const { instance, template: fileTemplate } = hit;
+        const filePartnerKey = fieldKeyForDisplay(fileTemplate.fields, K1_FIELD_PARTNER_DISPLAY);
+        const fileInvestmentKey = investmentFieldKeyForTemplate(fileTemplate);
+        if (!filePartnerKey || !fileInvestmentKey) {
+          return {
+            fileId: file.id,
+            boxFileUrl: boxWebFileUrl(file.id),
+            name: file.name,
+            stem,
+            subfolderPath: file.subfolderPath,
+            partnerName: null,
+            investmentNumber: null,
+            match: null,
+            matchPartner: null,
+            matchInvestment: null,
+            error: "Template on file is missing Partner Name or Investment / Investor number fields",
+          };
+        }
+
+        const partnerName = metadataValueString(instance[filePartnerKey]);
+        const investmentNumber = metadataValueString(instance[fileInvestmentKey]);
         const { match, matchPartner, matchInvestment } = filenameMatchesBothFields(stem, partnerName, investmentNumber);
 
         if (match === null) {
@@ -324,8 +383,8 @@ export async function runBoxFolderK1Check(accessToken: string, folderId: string)
 
   return {
     results,
-    templateScope: template.scope,
-    templateKey: template.templateKey,
+    templateScope: primaryTemplate.scope,
+    templateKey: primaryTemplate.templateKey,
     partnerFieldKey,
     investmentFieldKey,
   };

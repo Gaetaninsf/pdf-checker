@@ -178,10 +178,10 @@ export default function Home() {
                         )}
                         {r.match === null && (
                           <span
-                            className="inline-flex text-yellow-800 bg-yellow-50 px-2 py-1 rounded-full text-xs font-medium"
+                            className="inline-flex text-yellow-800 bg-yellow-50 px-2 py-1 rounded-full text-xs font-medium max-w-[12rem] truncate"
                             title={r.error}
                           >
-                            &#9888; {r.error ? "Error" : "—"}
+                            &#9888; {r.error ?? "—"}
                           </span>
                         )}
                       </td>

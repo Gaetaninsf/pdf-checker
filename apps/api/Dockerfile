@@ -1,4 +1,5 @@
-FROM node:24-slim AS builder
+# Pin patch for Node CVEs (e.g. CVE-2026-111497 requires >= 24.22.1).
+FROM node:24.22.1-slim AS builder
 
 WORKDIR /app
 
@@ -8,7 +9,7 @@ RUN cd apps/api && npm ci
 COPY apps/api/ ./apps/api/
 RUN cd apps/api && npx tsc
 
-FROM node:24-slim
+FROM node:24.22.1-slim
 
 ENV NODE_ENV=production \
     APP_ENV=prod \

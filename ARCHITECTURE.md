@@ -86,8 +86,9 @@ into shared log pipelines.
 
 ## Caddy configuration
 
-The proxy is deployed from the public `docker.io/library/caddy:2-alpine`
-image. The Caddyfile is stored as a Secret Manager secret
+The proxy image is built from `apps/proxy/Dockerfile` (official Caddy Alpine
+plus OS package upgrades) and pushed to Artifact Registry as
+`pdf-checker-proxy:latest`. The Caddyfile is stored as a Secret Manager secret
 (`pdf-checker-proxy-caddyfile`) and mounted into the container at
 `/etc/caddy/Caddyfile` at runtime.
 
@@ -96,11 +97,13 @@ image. The Caddyfile is stored as a Secret Manager secret
 1. `./scripts/gcp_bootstrap.sh --project tar-012f42959395` on first run creates:
    Artifact Registry repo, runtime service account, secrets, GCS bucket,
    default VPC (if missing), the web and api Cloud Run services as
-   internal-only placeholders, the proxy Cloud Run service running the public
-   `caddy:2-alpine` image with the Caddyfile mounted from Secret Manager and
+   internal-only placeholders, the proxy Cloud Run service with the Artifact
+   Registry `pdf-checker-proxy` image, Caddyfile from Secret Manager, and
    Direct VPC Egress configured, the IAP OAuth brand and client, IAP enabled
    on the proxy, and IAP IAM bindings synced from `whitelist.txt`.
-2. Build and push images for `apps/web` and `apps/api` to Artifact Registry.
-3. `gcloud run deploy` the real images to the web and api Cloud Run services.
+2. Build and push images for `apps/web`, `apps/api`, and `apps/proxy` to
+   Artifact Registry.
+3. `gcloud run deploy` the real images to the web and api Cloud Run services
+   (proxy image is updated by bootstrap / proxy redeploy).
 4. Re-run `./scripts/gcp_bootstrap.sh` anytime you change `whitelist.txt`,
    edit `apps/proxy/Caddyfile`, or want to reassert the expected state.

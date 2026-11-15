@@ -192,7 +192,10 @@ API_SERVICE="${APP_SLUG}-api"
 CADDYFILE_PATH="${ROOT_DIR}/apps/proxy/Caddyfile"
 CADDYFILE_SECRET="${APP_SLUG}-proxy-caddyfile"
 WHITELIST_FILE="${ROOT_DIR}/whitelist.txt"
-CADDY_IMAGE="docker.io/library/caddy:2-alpine"
+# Built from apps/proxy/Dockerfile (caddy alpine + apk security upgrades).
+# Fallback to public image only if Artifact Registry tag is missing at first create;
+# after `make build` / Cloud Build of the proxy, always prefer the AR image.
+CADDY_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/${APP_SLUG}-proxy:latest"
 PLACEHOLDER_IMAGE="us-docker.pkg.dev/cloudrun/container/hello"
 
 run_service_exists() {
@@ -312,7 +315,7 @@ PROXY_COMMON_ARGS=(
 if run_service_exists "$PROXY_SERVICE"; then
   echo "[update] $PROXY_SERVICE (image, Caddyfile, upstreams, VPC egress, ingress)"
 else
-  echo "[create] Cloud Run: $PROXY_SERVICE (public caddy:2-alpine)"
+  echo "[create] Cloud Run: $PROXY_SERVICE (IAP-gated; image ${CADDY_IMAGE})"
 fi
 gcloud run deploy "$PROXY_SERVICE" "${PROXY_COMMON_ARGS[@]}" >/dev/null
 

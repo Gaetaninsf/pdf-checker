@@ -39,8 +39,10 @@ build: ## Build and push per-service Docker images for Cloud Run
 	$(eval REGISTRY := $(REGION)-docker.pkg.dev/$(PROJECT)/$(REPO))
 	docker build --platform linux/amd64 -f apps/api/Dockerfile -t $(REGISTRY)/$(SLUG)-api:latest .
 	docker build --platform linux/amd64 -f apps/web/Dockerfile -t $(REGISTRY)/$(SLUG)-web:latest .
+	docker build --platform linux/amd64 -f apps/proxy/Dockerfile -t $(REGISTRY)/$(SLUG)-proxy:latest .
 	docker push $(REGISTRY)/$(SLUG)-api:latest
 	docker push $(REGISTRY)/$(SLUG)-web:latest
+	docker push $(REGISTRY)/$(SLUG)-proxy:latest
 
 deploy: ## Print deploy env and point at the bootstrap-generated templates
 	./scripts/gcp_print_env.sh

@@ -1,7 +1,13 @@
-# Pin patch for Node CVEs (e.g. CVE-2026-111497 requires >= 24.22.1).
-FROM node:24.22.1-slim AS builder
+# Pin Node for runtime CVEs; bump intentionally when security releases ship.
+FROM node:24.22.3-slim AS builder
 
 WORKDIR /app
+
+# Apply Debian security updates (curl/libcurl, zlib, expat, etc.).
+# Wiz often suggests `apk`; this image is Debian slim — use apt.
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY apps/api/package.json apps/api/package-lock.json* ./apps/api/
 RUN cd apps/api && npm ci
@@ -9,7 +15,7 @@ RUN cd apps/api && npm ci
 COPY apps/api/ ./apps/api/
 RUN cd apps/api && npx tsc
 
-FROM node:24.22.1-slim
+FROM node:24.22.3-slim
 
 ENV NODE_ENV=production \
     APP_ENV=prod \
@@ -17,6 +23,10 @@ ENV NODE_ENV=production \
     PORT=8080
 
 WORKDIR /app
+
+RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/apps/api/package.json ./apps/api/
 COPY --from=builder /app/apps/api/package-lock.json* ./apps/api/
